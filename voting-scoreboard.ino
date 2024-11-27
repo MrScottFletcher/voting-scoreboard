@@ -9,31 +9,37 @@
 #define NUM_SCOREBOARD_LEDS 174     // 174 for digits + 100 for border
 #define NUM_CHASER_LEDS 100     // 174 for digits + 100 for border
 
-#define NUM_BUTTONS 4
+#define NUM_BUTTONS 6
 #define BUTTON_INC_LEFT  2
 #define BUTTON_DEC_LEFT 3
 #define BUTTON_INC_RIGHT 4
 #define BUTTON_DEC_RIGHT 5
+
+#define BUTTON_INC_LEFT_ALT 8  // New button for left score increment
+#define BUTTON_INC_RIGHT_ALT 9 // New button for right score increment
 
 #define BORDER_START 175    // Starting LED index for the border
 #define BORDER_COUNT 100    // Number of LEDs in the border
 
 //=======================================
 // Button pins
-const int buttonPins[NUM_BUTTONS] = {
+const int buttonPins[NUM_BUTTONS + 2] = {
   BUTTON_INC_LEFT,
   BUTTON_DEC_LEFT,
   BUTTON_INC_RIGHT,
-  BUTTON_DEC_RIGHT
+  BUTTON_DEC_RIGHT,
+  BUTTON_INC_LEFT_ALT,  // New button
+  BUTTON_INC_RIGHT_ALT  // New button
 };
 
+
 // Button states
-bool _buttonStates[NUM_BUTTONS] = {HIGH, HIGH, HIGH, HIGH}; // Current state
-bool lastButtonStates[NUM_BUTTONS] = {HIGH, HIGH, HIGH, HIGH}; // Last known state
-unsigned long _lastDebounceTimes[NUM_BUTTONS] = {0, 0, 0, 0};
+bool _buttonStates[NUM_BUTTONS] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH}; // Current state
+
+bool lastButtonStates[NUM_BUTTONS] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
+unsigned long _lastDebounceTimes[NUM_BUTTONS] = {0, 0, 0, 0, 0, 0};
 
 // Debounce delay
-unsigned long _lastDebounceTime = 0;
 const unsigned long _debounceDelay = 50;
 
 //=======================================
@@ -79,36 +85,44 @@ void setup() {
   Serial.begin(9600);
   
   _myDFPlayerSerial.begin(9600);
-  Serial.println("Test sketch uploaded successfully!");
+  Serial.println("setup() starting...");
 
   FastLED.addLeds<WS2812, SCOREBOARD_LED_PIN, GRB>(_scoreboardLEDs, NUM_SCOREBOARD_LEDS);
   FastLED.addLeds<WS2812, CHASER_LED_PIN, GRB>(_chaserLEDs, NUM_CHASER_LEDS);
   
   FastLED.clear(); // Initialize all LEDs to off
-  FastLED.setBrightness(64); //For just testing on the bench
+  FastLED.setBrightness(128); //For just testing on the bench
   FastLED.show();
   
   pinMode(BUTTON_INC_LEFT, INPUT_PULLUP);
   pinMode(BUTTON_DEC_LEFT, INPUT_PULLUP);
   pinMode(BUTTON_INC_RIGHT, INPUT_PULLUP);
   pinMode(BUTTON_DEC_RIGHT, INPUT_PULLUP);
-  
+
+  pinMode(BUTTON_INC_LEFT_ALT, INPUT_PULLUP);
+  pinMode(BUTTON_INC_RIGHT_ALT, INPUT_PULLUP);
+
   dfPlayer.begin(_myDFPlayerSerial);
   dfPlayer.volume(20);
 
   displayScore(_scoreLeft, 0, CRGB::Green);
   displayScore(_scoreRight, 3, CRGB::Red);
+  Serial.println("setup() complete!");
+  Serial.println("Staring multiDigitTestLoop()...");
+  multiDigitTestLoop(6);
+  Serial.println("multiDigitTestLoop() complete!");
 }
 
 //========================================
 void loop() {
   
-  //scoreboardLoop();
+  scoreboardLoop();
   //singleDigitTestLoop(1);
-  multiDigitTestLoop(6 );
+  //multiDigitTestLoop(6 );
   //firstDigitTestLoop();
-  
-  chasingLightsLoop(); 
+
+  //We'll figure this out later
+  //chasingLightsLoop(); 
 
   
 }
@@ -153,35 +167,29 @@ void setAllChaserLEDColor(CRGB color){
 
 void scoreboardLoop(){
   displayScore(_scoreLeft, 0, CRGB::Green);
-  displayScore(_scoreRight, 0, CRGB::Red);
+  displayScore(_scoreRight, 3, CRGB::Red);
   for (int i = 0; i < NUM_BUTTONS; i++) {
     int reading = digitalRead(buttonPins[i]);
-
-    // Debounce logic
+    
     if (reading != lastButtonStates[i]) {
       _lastDebounceTimes[i] = millis();
     }
-
-    if ((millis() - _lastDebounceTimes[i]) > _debounceDelay) {
-      // If the button state has changed
-      if (reading != _buttonStates[i]) {
-        _buttonStates[i] = reading;
-
-        // Only act on button press (LOW)
-        if (_buttonStates[i] == LOW) {
-          handleButtonPress(i);
-        }
+    
+    if ((millis() - _lastDebounceTimes[i]) > _debounceDelay && reading != _buttonStates[i]) {
+      _buttonStates[i] = reading;
+      if (_buttonStates[i] == LOW) {
+        handleButtonPress(i);
       }
     }
-
+    
     // Save the current reading for next iteration
     lastButtonStates[i] = reading;
   }
       
     // Handle border pulsing effect
-    if (pulsing) {
-      updatePulse();
-    }
+    //    if (pulsing) {
+    //      updatePulse();
+    //    }
 
 }
 
@@ -189,29 +197,48 @@ void scoreboardLoop(){
 void handleButtonPress(int buttonIndex) {
   switch (buttonIndex) {
     case 0: // Left increment
+      //Serial.println("Button _scoreLeft UP pressed!");
       _scoreLeft = min(_scoreLeft + 1, 999);
       displayScore_Left(_scoreLeft);
       playLeftSfx();
-      startPulse();
+      //startPulse();
       break;
 
     case 1: // Left decrement
+      //Serial.println("Button _scoreLeft DOWN pressed!");
       _scoreLeft = max(_scoreLeft - 1, 0);
       displayScore_Left(_scoreLeft);
       break;
 
     case 2: // Right increment
+      //Serial.println("Button _scoreRight UP pressed!");
       _scoreRight = min(_scoreRight + 1, 999);
       displayScore_Right(_scoreRight);
       playRightSfx();
-      startPulse();
+      //startPulse();
       break;
 
     case 3: // Right decrement
+      //Serial.println("Button _scoreRight DOWN pressed!");
       _scoreRight = max(_scoreRight - 1, 0);
       displayScore_Right(_scoreRight);
       break;
+      
+    case 4: // Left increment (alternate)
+      Serial.println("BIG FAT Button _scoreLeft UP pressed!");
+      _scoreLeft = min(_scoreLeft + 1, 999);
+      displayScore_Left(_scoreLeft);
+      playLeftSfx();
+      //startPulse();
+      break;
 
+    case 5: // Right increment (alternate)
+      Serial.println("BIG FAT Button _scoreRight UP pressed!");
+      _scoreRight = min(_scoreRight + 1, 999);
+      displayScore_Right(_scoreRight);
+      playRightSfx();
+      //startPulse();
+      break;
     default:
       break;
   }
@@ -221,7 +248,18 @@ void displayScore_Right(int score){
 }
 
 void displayScore_Left(int score){
-  displayScore(score, 3, CRGB::Green);
+  displayScore(score, 0, CRGB::Green);
+}
+
+// Display functions (same as before)
+void displayScore(int score, int startDigit, CRGB color) {
+  int hundreds = score / 100;
+  int tens = (score / 10) % 10;
+  int units = score % 10;
+  
+  displayDigit(hundreds, startDigit, color);
+  displayDigit(tens, startDigit + 1, color);
+  displayDigit(units, startDigit + 2, color);
 }
 
 void displayDigit(int numberVal, int numberPosition, CRGB color) {
@@ -234,7 +272,7 @@ void displayDigit(int numberVal, int numberPosition, CRGB color) {
       }
       bool segmentState = pgm_read_byte(&digits[numberVal][segment]);
       setSegment(segmentStart, segmentState, color);
-      FastLED.show();
+      //FastLED.show();
     }
 
   FastLED.show(); // Update the LEDs to reflect the changes
@@ -299,16 +337,7 @@ void playRightSfx() {
   if (rightSfxIndex > 10) rightSfxIndex = 6;
 }
 
-// Display functions (same as before)
-void displayScore(int score, int startDigit, CRGB color) {
-  int hundreds = score / 100;
-  int tens = (score / 10) % 10;
-  int units = score % 10;
-  
-  displayDigit(hundreds, startDigit, color);
-  displayDigit(tens, startDigit + 1, color);
-  displayDigit(units, startDigit + 2, color);
-}
+
 
 
 
