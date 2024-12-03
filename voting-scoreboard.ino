@@ -7,7 +7,7 @@
 #define CHASER_LED_PIN 7
 
 #define NUM_SCOREBOARD_LEDS 174     // 174 for digits + 100 for border
-#define NUM_CHASER_LEDS 100     // 174 for digits + 100 for border
+#define NUM_CHASER_LEDS 50     // 174 for digits + 100 for border
 
 #define NUM_BUTTONS 6
 #define BUTTON_INC_LEFT  2
@@ -18,8 +18,13 @@
 #define BUTTON_INC_LEFT_ALT 8  // New button for left score increment
 #define BUTTON_INC_RIGHT_ALT 9 // New button for right score increment
 
+#define BUTTON_TEST_SCORE 8  
+#define BUTTON_TEST_SOUND 10
+#define BUTTON_TEST_CHASE 9 
+
+
 #define BORDER_START 175    // Starting LED index for the border
-#define BORDER_COUNT 100    // Number of LEDs in the border
+#define BORDER_COUNT 50    // Number of LEDs in the border
 
 //=======================================
 // Button pins
@@ -57,14 +62,14 @@ int _scoreRight = 0;
 int leftSfxIndex = 1;
 int rightSfxIndex = 6;
 
-bool pulsing = false;        // Is the border pulsing?
-unsigned long pulseStart = 0; // Start time of the pulse effect
+bool _pulsing = false;        // Is the border _pulsing?
+unsigned long _pulseStart = 0; // Start time of the pulse effect
 
 int _segmentLEDCount = 4;
 int _digitLEDCount = 29; //includes the one 'spare'
 
 unsigned long _lastChaseUpdate = 0; // Tracks the last time the chaser was updated
-unsigned long _chaseDelay = 100; // Tracks the last time the chaser was updated
+unsigned long _chaseDelay = 2000; // Tracks the last time the chaser was updated
 
 const bool digits[][7] PROGMEM = {
 {false,true,true,true,true,true,true}, // 0
@@ -78,7 +83,15 @@ const bool digits[][7] PROGMEM = {
 {true,true,true,true,true,true,true}, // 8
 {true,true,true,true,false,true,true}, // 9
 };
+//===============================================
 
+bool _showRainbow = false;       // Flag to indicate the rainbow effect is active
+unsigned long _rainbowStartTime; // Timestamp when the rainbow effect starts
+const unsigned long _rainbowDuration = 2000; // Rainbow effect duration (2 seconds)
+bool _rainbowDelayActive = false;      // Flag to indicate if the delay is active
+unsigned long _rainbowDelayStartTime;  // Start time for the 1-second delay
+
+//===============================================
 
 
 void setup() {
@@ -91,7 +104,9 @@ void setup() {
   FastLED.addLeds<WS2812, CHASER_LED_PIN, GRB>(_chaserLEDs, NUM_CHASER_LEDS);
   
   FastLED.clear(); // Initialize all LEDs to off
-  FastLED.setBrightness(128); //For just testing on the bench
+  FastLED.setBrightness(64); //For just testing on the bench
+  //FastLED.setBrightness(128); //For just testing on the bench
+  //FastLED.setBrightness(255); //For just testing on the bench
   FastLED.show();
   
   pinMode(BUTTON_INC_LEFT, INPUT_PULLUP);
@@ -108,60 +123,113 @@ void setup() {
   displayScore(_scoreLeft, 0, CRGB::Green);
   displayScore(_scoreRight, 3, CRGB::Red);
   Serial.println("setup() complete!");
-  Serial.println("Staring multiDigitTestLoop()...");
+  Serial.println("Staring multiDigit TestLoop()...");
   multiDigitTestLoop(6);
   Serial.println("multiDigitTestLoop() complete!");
 }
 
 //========================================
 void loop() {
-  
-  scoreboardLoop();
-  //singleDigitTestLoop(1);
-  //multiDigitTestLoop(6 );
-  //firstDigitTestLoop();
+  // Handle scoreboard logic
+    scoreboardLoop();
 
-  //We'll figure this out later
-  //chasingLightsLoop(); 
+  // Handle the rainbow delay logic
+  if (_rainbowDelayActive) {
+    unsigned long currentTime = millis();
+    Serial.print("Checking rainbow delay. Current time: ");
+    Serial.print(currentTime);
+    Serial.print(", Start time: ");
+    Serial.println(_rainbowDelayStartTime);
 
-  
+    if (currentTime - _rainbowDelayStartTime >= 1000) {
+      Serial.println("Rainbow delay completed.");
+      _rainbowDelayActive = false; // Stop the delay
+      startRainbowEffect();       // Trigger the rainbow effect
+    }
+  }
+
+  // If no rainbow effect is active, handle marquee lights
+  if (!_showRainbow) {
+    marqueeChaseEffect();
+  } else {
+    updateRainbowEffect();
+  }
 }
 //========================================
 
-void chasingLightsLoop(){
-  updateChasingLights(CRGB::Blue); 
-}
+void marqueeChaseEffect() {
+  static uint8_t chasePosition = 0;      // Tracks the current position in the pattern
+  static unsigned long lastUpdate = 0;  // Tracks the last update time
 
-// Function to create a chasing lights effect
-void updateChasingLights(CRGB color) {
-  static int _chasePosition = 0; // Tracks the current position of the chase
   unsigned long currentTime = millis();
 
-  // Check if enough time has passed to update the chaser
-  if (currentTime - _lastChaseUpdate >= _chaseDelay) {
-      _lastChaseUpdate = currentTime; // Record the current time
-      
-    // Clear all LEDs
-    setAllChaserLEDColor(CRGB::Black);
-  
-    // Turn on the current LED and a few trailing LEDs for the "chase" effect
-    for (int i = 0; i < 3; i++) { // Adjust the range for longer or shorter trails
-      int index = (_chasePosition - i + NUM_CHASER_LEDS) % NUM_CHASER_LEDS; // Wrap around using modulo
-      _chaserLEDs[index] = color;
+  // Check if enough time has passed to update the marquee
+  if (currentTime - lastUpdate >= _chaseDelay) {
+    lastUpdate = currentTime; // Update the last update time
+
+    // Clear only the chaser LEDs
+    //setAllChaserLEDColor(CRGB::Black);
+
+    // Loop through all chaser LEDs and assign them to a "chasing group"
+    for (int i = 0; i < NUM_CHASER_LEDS; i++) {
+      if ((i + chasePosition) % 3 == 0) {
+        _chaserLEDs[i] = CRGB::White; // Set the "on" LEDs
+      }
+      else{
+        _chaserLEDs[i] = CRGB::Black; // Set the "off" LEDs
+      }
     }
-  
-    FastLED.show();
-  
-    // Move to the next position
-    _chasePosition = (_chasePosition + 1) % NUM_CHASER_LEDS; // Wrap around when reaching the end
+
+    // Update only the chaser LEDs
+    //FastLED.show();
+
+    // Move the position forward for the chase effect
+    chasePosition = (chasePosition + 1) % 3;
   }
 }
+
 
 void setAllChaserLEDColor(CRGB color){
   for (int i = 0; i < NUM_CHASER_LEDS; i++) {
     _chaserLEDs[i] = color;
   }
 }
+
+void updateRainbowEffect() {
+  unsigned long _currentTime = millis();
+
+  // Apply the rainbow effect
+  static uint8_t _hue = 0; // Starting hue
+  //fill_rainbow(_scoreboardLEDs, NUM_SCOREBOARD_LEDS, _hue, 7); // Adjust "7" for rainbow spread
+  fill_rainbow(_chaserLEDs, NUM_CHASER_LEDS, _hue, 7);         // Adjust for chaser LEDs
+
+  //FastLED.show();
+
+  // Increment the hue for the rainbow animation
+  _hue += 5;
+
+  // Check if the effect duration has elapsed
+  if (_currentTime - _rainbowStartTime >= _rainbowDuration) {
+    _showRainbow = false; // Stop the rainbow effect
+    //clearScoreboard();   // Reset scoreboard LEDs
+    //clearChaser();       // Reset chaser LEDs
+  }
+}
+
+void clearScoreboard() {
+  for (int i = 0; i < NUM_SCOREBOARD_LEDS; i++) {
+    _scoreboardLEDs[i] = CRGB::Black;
+  }
+  FastLED.show();
+}
+
+void clearChaser() {
+  for (int i = 0; i < NUM_CHASER_LEDS; i++) {
+    _chaserLEDs[i] = CRGB::Black;
+  }
+  FastLED.show();
+}
+
 
 //=========================================
 
@@ -185,64 +253,39 @@ void scoreboardLoop(){
     // Save the current reading for next iteration
     lastButtonStates[i] = reading;
   }
-      
-    // Handle border pulsing effect
-    //    if (pulsing) {
-    //      updatePulse();
-    //    }
-
 }
 
-// Handle button press events
 void handleButtonPress(int buttonIndex) {
   switch (buttonIndex) {
-    case 0: // Left increment
-      //Serial.println("Button _scoreLeft UP pressed!");
+    case 0:  // Left increment
+    case 4:  // Left increment (alternate)
       _scoreLeft = min(_scoreLeft + 1, 999);
       displayScore_Left(_scoreLeft);
       playLeftSfx();
-      //startPulse();
+      startRainbowDelay(); // Start the 1-second delay
       break;
 
-    case 1: // Left decrement
-      //Serial.println("Button _scoreLeft DOWN pressed!");
+    case 2:  // Right increment
+    case 5:  // Right increment (alternate)
+      _scoreRight = min(_scoreRight + 1, 999);
+      displayScore_Right(_scoreRight);
+      playRightSfx();
+      startRainbowDelay(); // Start the 1-second delay
+      break;
+
+    case 1:  // Left decrement
       _scoreLeft = max(_scoreLeft - 1, 0);
       displayScore_Left(_scoreLeft);
       break;
 
-    case 2: // Right increment
-      //Serial.println("Button _scoreRight UP pressed!");
-      _scoreRight = min(_scoreRight + 1, 999);
-      displayScore_Right(_scoreRight);
-      playRightSfx();
-      //startPulse();
-      break;
-
-    case 3: // Right decrement
-      //Serial.println("Button _scoreRight DOWN pressed!");
+    case 3:  // Right decrement
       _scoreRight = max(_scoreRight - 1, 0);
       displayScore_Right(_scoreRight);
       break;
-      
-    case 4: // Left increment (alternate)
-      Serial.println("BIG FAT Button _scoreLeft UP pressed!");
-      _scoreLeft = min(_scoreLeft + 1, 999);
-      displayScore_Left(_scoreLeft);
-      playLeftSfx();
-      //startPulse();
-      break;
-
-    case 5: // Right increment (alternate)
-      Serial.println("BIG FAT Button _scoreRight UP pressed!");
-      _scoreRight = min(_scoreRight + 1, 999);
-      displayScore_Right(_scoreRight);
-      playRightSfx();
-      //startPulse();
-      break;
-    default:
-      break;
   }
 }
+
+
 void displayScore_Right(int score){
   displayScore(score, 3, CRGB::Red);
 }
@@ -272,7 +315,6 @@ void displayDigit(int numberVal, int numberPosition, CRGB color) {
       }
       bool segmentState = pgm_read_byte(&digits[numberVal][segment]);
       setSegment(segmentStart, segmentState, color);
-      //FastLED.show();
     }
 
   FastLED.show(); // Update the LEDs to reflect the changes
@@ -282,31 +324,6 @@ void setSegment(int startLED, bool on, CRGB color) {
   for (int i = 0; i < _segmentLEDCount; i++) {
     _scoreboardLEDs[startLED + 1 + i] = on ? color : CRGB::Black; // Use red for "on" and black for "off"
   }
-}
-
-// Function to start the pulsing effect
-void startPulse() {
-  pulsing = true;
-  pulseStart = millis();
-}
-
-// Function to update the pulsing effect
-void updatePulse() {
-  unsigned long currentTime = millis();
-  unsigned long elapsed = currentTime - pulseStart;
-
-  // Calculate phase (on/off every 125ms for 4 cycles in 1 second)
-  int phase = (elapsed / 125) % 2;
-
-  if (elapsed >= 1000) {
-    pulsing = false; // Stop pulsing after 1 second
-    clearBorder();
-    return;
-  }
-
-  // Set border LEDs to on or off based on the phase
-  setBorderColor(phase == 0 ? CRGB::Green : CRGB::Black);
-  FastLED.show();
 }
 
 // Function to set the border color
@@ -322,26 +339,33 @@ void clearBorder() {
   FastLED.show();
 }
 
-
 // Function to play left side sound effects in sequence
 void playLeftSfx() {
-  dfPlayer.play(leftSfxIndex);
-  leftSfxIndex++;
-  if (leftSfxIndex > 5) leftSfxIndex = 1;
+//  dfPlayer.play(leftSfxIndex);
+//  leftSfxIndex++;
+//  if (leftSfxIndex > 5) leftSfxIndex = 1;
 }
 
 // Function to play right side sound effects in sequence
 void playRightSfx() {
-  dfPlayer.play(rightSfxIndex);
-  rightSfxIndex++;
-  if (rightSfxIndex > 10) rightSfxIndex = 6;
+//  dfPlayer.play(rightSfxIndex);
+//  rightSfxIndex++;
+//  if (rightSfxIndex > 10) rightSfxIndex = 6;
 }
 
-
-
-
-
 //==================================================================================================================
+void startRainbowDelay() {
+  _rainbowDelayActive = true;
+  _rainbowDelayStartTime = millis(); // Record the current time
+  Serial.print("Rainbow delay started. Start time: ");
+  Serial.println(_rainbowDelayStartTime);
+}
+
+void startRainbowEffect() {
+  _showRainbow = true;
+  _rainbowStartTime = millis(); // Record the start time
+}
+
 //==================================================================================================================
 int serialPrintf(const char *format, ...) {
   char buffer[128]; // Adjust size if needed
@@ -415,7 +439,7 @@ void multiDigitTestLoop(int numDigits)
         setSegment(segmentStart, true, CRGB::Red);
         //setSegment(segmentStart + (segment * _segmentLEDCount), digits[digit][segment]);
         FastLED.show();
-        delay(30);                      // Wait 1 second before changing
+        delay(5);                      // Wait 1 second before changing
       }
     }
     
@@ -424,7 +448,7 @@ void multiDigitTestLoop(int numDigits)
           //--reset on every digit
             displayDigit(i,currentDigit, CRGB::Green); //zero shows in the first digit
             FastLED.show();
-            delay(100);                      // Wait 1 second before changing
+            delay(25);                      // Wait 1 second before changing
           }
          displayDigit(8,currentDigit, CRGB::Blue);  //set to 8 to illuminate all segments
       }
