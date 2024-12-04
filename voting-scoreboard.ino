@@ -1,7 +1,7 @@
 //#include <Adafruit_NeoPixel.h>
 #include <FastLED.h>
 #include <DFRobotDFPlayerMini.h>
-#include <SoftwareSerial.h>
+//#include <SoftwareSerial.h>
 
 #define SCOREBOARD_LED_PIN 6
 #define CHASER_LED_PIN 7
@@ -52,15 +52,15 @@ const unsigned long _debounceDelay = 50;
 CRGB _scoreboardLEDs[NUM_SCOREBOARD_LEDS]; // Array to hold LED data
 CRGB _chaserLEDs[NUM_CHASER_LEDS]; // Array to hold LED data
 
-SoftwareSerial _myDFPlayerSerial(10, 11); // RX, TX for DFPlayer
-DFRobotDFPlayerMini dfPlayer;
+//SoftwareSerial _myDFPlayerSerial(18, 11); // RX, TX for _dfPlayer
+DFRobotDFPlayerMini _dfPlayer;
 
 int _globalBrightness = 255;
 
 int _scoreLeft = 0;
 int _scoreRight = 0;
-int leftSfxIndex = 1;
-int rightSfxIndex = 6;
+int _leftSfxIndex = 0;
+int _rightSfxIndex = 5;
 
 bool _pulsing = false;        // Is the border _pulsing?
 unsigned long _pulseStart = 0; // Start time of the pulse effect
@@ -69,7 +69,7 @@ int _segmentLEDCount = 4;
 int _digitLEDCount = 29; //includes the one 'spare'
 
 unsigned long _lastChaseUpdate = 0; // Tracks the last time the chaser was updated
-unsigned long _chaseDelay = 2000; // Tracks the last time the chaser was updated
+unsigned long _chaseDelay = 500; // Tracks the last time the chaser was updated
 
 const bool digits[][7] PROGMEM = {
 {false,true,true,true,true,true,true}, // 0
@@ -87,18 +87,45 @@ const bool digits[][7] PROGMEM = {
 
 bool _showRainbow = false;       // Flag to indicate the rainbow effect is active
 unsigned long _rainbowStartTime; // Timestamp when the rainbow effect starts
-const unsigned long _rainbowDuration = 2000; // Rainbow effect duration (2 seconds)
+const unsigned long _rainbowDuration = 5000; // Rainbow effect duration (2 seconds)
 bool _rainbowDelayActive = false;      // Flag to indicate if the delay is active
 unsigned long _rainbowDelayStartTime;  // Start time for the 1-second delay
 
 //===============================================
+//  // AUDIO TEST LOOP
+//void setup() {
+//  Serial.begin(9600);    // Debugging via USB
+//  Serial2.begin(9600);   // Start Serial2 for DFPlayer communication
+//
+//  if (!_dfPlayer.begin(Serial2)) { // Use Serial2 instead of SoftwareSerial
+//    Serial.println("DFPlayer initialization failed!");
+//    while (true); // Stop execution if DFPlayer fails to initialize
+//  }
+//
+//  _dfPlayer.volume(15); // Set volume level (0-30)
+//  Serial.println("DFPlayer initialized successfully!");
+//}
 
+//void loop() {
+//  // Example: Play track 1
+//  Serial.println("Playing Track 1!");
+//  _dfPlayer.play(1);
+//  delay(5000); // Wait for the track to play
+//}
+//===============================================
 
 void setup() {
-  Serial.begin(9600);
   
-  _myDFPlayerSerial.begin(9600);
-  Serial.println("setup() starting...");
+  Serial.begin(9600);    // Debugging via USB
+  Serial2.begin(9600);   // Start Serial2 for DFPlayer communication
+
+  if (!_dfPlayer.begin(Serial2)) { // Use Serial2 instead of SoftwareSerial
+    Serial.println("DFPlayer initialization failed!");
+    while (true); // Stop execution if DFPlayer fails to initialize
+  }
+
+  _dfPlayer.volume(15); // Set volume level (0-30)
+  Serial.println("DFPlayer initialized successfully!");Serial.println("setup() starting...");
 
   FastLED.addLeds<WS2812, SCOREBOARD_LED_PIN, GRB>(_scoreboardLEDs, NUM_SCOREBOARD_LEDS);
   FastLED.addLeds<WS2812, CHASER_LED_PIN, GRB>(_chaserLEDs, NUM_CHASER_LEDS);
@@ -116,9 +143,6 @@ void setup() {
 
   pinMode(BUTTON_INC_LEFT_ALT, INPUT_PULLUP);
   pinMode(BUTTON_INC_RIGHT_ALT, INPUT_PULLUP);
-
-  dfPlayer.begin(_myDFPlayerSerial);
-  dfPlayer.volume(20);
 
   displayScore(_scoreLeft, 0, CRGB::Green);
   displayScore(_scoreRight, 3, CRGB::Red);
@@ -154,6 +178,8 @@ void loop() {
   } else {
     updateRainbowEffect();
   }
+
+  FastLED.show();
 }
 //========================================
 
@@ -170,6 +196,12 @@ void marqueeChaseEffect() {
     // Clear only the chaser LEDs
     //setAllChaserLEDColor(CRGB::Black);
 
+    //As recommended by ChatGPT
+    // Clear all chaser LEDs explicitly
+//    for (int i = 0; i < NUM_CHASER_LEDS; i++) {
+//      _chaserLEDs[i] = CRGB::Black; // Reset to "off"
+//    }
+    
     // Loop through all chaser LEDs and assign them to a "chasing group"
     for (int i = 0; i < NUM_CHASER_LEDS; i++) {
       if ((i + chasePosition) % 3 == 0) {
@@ -220,14 +252,14 @@ void clearScoreboard() {
   for (int i = 0; i < NUM_SCOREBOARD_LEDS; i++) {
     _scoreboardLEDs[i] = CRGB::Black;
   }
-  FastLED.show();
+  //FastLED.show();
 }
 
 void clearChaser() {
   for (int i = 0; i < NUM_CHASER_LEDS; i++) {
     _chaserLEDs[i] = CRGB::Black;
   }
-  FastLED.show();
+  //FastLED.show();
 }
 
 
@@ -303,6 +335,10 @@ void displayScore(int score, int startDigit, CRGB color) {
   displayDigit(hundreds, startDigit, color);
   displayDigit(tens, startDigit + 1, color);
   displayDigit(units, startDigit + 2, color);
+  
+  //cli();
+  //FastLED.show(); // Update the LEDs to reflect the changes
+  //sei();
 }
 
 void displayDigit(int numberVal, int numberPosition, CRGB color) {
@@ -317,7 +353,8 @@ void displayDigit(int numberVal, int numberPosition, CRGB color) {
       setSegment(segmentStart, segmentState, color);
     }
 
-  FastLED.show(); // Update the LEDs to reflect the changes
+  //Let the caller do it
+  //FastLED.show(); // Update the LEDs to reflect the changes
 }
 
 void setSegment(int startLED, bool on, CRGB color) {
@@ -336,21 +373,27 @@ void setBorderColor(CRGB color) {
 // Function to clear the border LEDs
 void clearBorder() {
   setBorderColor(CRGB::Black);
-  FastLED.show();
+  //FastLED.show();
 }
 
 // Function to play left side sound effects in sequence
 void playLeftSfx() {
-//  dfPlayer.play(leftSfxIndex);
-//  leftSfxIndex++;
-//  if (leftSfxIndex > 5) leftSfxIndex = 1;
+  Serial.print("Play Left SFX index:");
+  Serial.println(_leftSfxIndex);
+  _dfPlayer.play(_leftSfxIndex);
+  Serial.print("Set next Left SFX index");
+  _leftSfxIndex++;
+  if (_leftSfxIndex > 4) _leftSfxIndex = 1;
 }
 
 // Function to play right side sound effects in sequence
 void playRightSfx() {
-//  dfPlayer.play(rightSfxIndex);
-//  rightSfxIndex++;
-//  if (rightSfxIndex > 10) rightSfxIndex = 6;
+  Serial.print("Play Right SFX index:");
+  Serial.println(_rightSfxIndex);
+  _dfPlayer.play(_rightSfxIndex);
+  Serial.print("Set next Right SFX index");
+  _rightSfxIndex++;
+  if (_rightSfxIndex > 9) _rightSfxIndex = 5;
 }
 
 //==================================================================================================================
@@ -448,7 +491,7 @@ void multiDigitTestLoop(int numDigits)
           //--reset on every digit
             displayDigit(i,currentDigit, CRGB::Green); //zero shows in the first digit
             FastLED.show();
-            delay(25);                      // Wait 1 second before changing
+            delay(10);                      // Wait 1 second before changing
           }
          displayDigit(8,currentDigit, CRGB::Blue);  //set to 8 to illuminate all segments
       }
