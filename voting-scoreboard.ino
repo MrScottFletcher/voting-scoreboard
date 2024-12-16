@@ -8,7 +8,7 @@
 #define NUM_SCOREBOARD_LEDS 174
 #define NUM_CHASER_LEDS 50
 
-#define NUM_BUTTONS 6
+#define NUM_BUTTONS 8
 #define BUTTON_INC_LEFT  2
 #define BUTTON_DEC_LEFT 3
 #define BUTTON_INC_RIGHT 4
@@ -17,11 +17,15 @@
 #define BUTTON_INC_LEFT_ALT 11
 #define BUTTON_INC_RIGHT_ALT 12
 
+#define BUTTON_INC_LEFT_BIG 22
+#define BUTTON_INC_RIGHT_BIG 23
+
 #define RESET_BUTTON_PIN 13 // Pin for the reset button
 
 #define NEXT_SONG_BUTTON_PIN 9
 #define PREV_SONG_BUTTON_PIN 10
 
+#define SWITCH_BRIGHT_PIN 8
 
 #define BORDER_START 175
 #define BORDER_COUNT 50
@@ -44,19 +48,21 @@ const bool digits[][7] PROGMEM = {
 
 //=======================================
 // Button pins
-const int _buttonPins[NUM_BUTTONS + 2] = {
+const int _buttonPins[NUM_BUTTONS + 4] = {
   BUTTON_INC_LEFT,
   BUTTON_DEC_LEFT,
   BUTTON_INC_RIGHT,
   BUTTON_DEC_RIGHT,
   BUTTON_INC_LEFT_ALT,  // New button
-  BUTTON_INC_RIGHT_ALT  // New button
+  BUTTON_INC_RIGHT_ALT,  // New button
+  BUTTON_INC_LEFT_BIG,  // New button
+  BUTTON_INC_RIGHT_BIG,  // New button
 };
 
 
-bool _buttonStates[NUM_BUTTONS] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
-bool _lastButtonStates[NUM_BUTTONS] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
-unsigned long _lastDebounceTimes[NUM_BUTTONS] = {0, 0, 0, 0, 0, 0};
+bool _buttonStates[NUM_BUTTONS] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
+bool _lastButtonStates[NUM_BUTTONS] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
+unsigned long _lastDebounceTimes[NUM_BUTTONS] = {0, 0, 0, 0, 0, 0, 0, 0};
 const unsigned long _debounceDelay = 50;
 
 unsigned long _lastResetPressTime = 0;
@@ -190,13 +196,24 @@ void setup() {
   pinMode(BUTTON_INC_LEFT_ALT, INPUT_PULLUP);
   pinMode(BUTTON_INC_RIGHT_ALT, INPUT_PULLUP);
 
+  pinMode(BUTTON_INC_LEFT_BIG, INPUT_PULLUP);
+  pinMode(BUTTON_INC_RIGHT_BIG, INPUT_PULLUP);
+
   pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
+
+  pinMode(SWITCH_BRIGHT_PIN, INPUT_PULLUP);
 
   // Initialize next and previous song buttons
   pinMode(NEXT_SONG_BUTTON_PIN, INPUT_PULLUP);
   pinMode(PREV_SONG_BUTTON_PIN, INPUT_PULLUP);
 
   randomSeed(analogRead(0));
+
+  if (digitalRead(SWITCH_BRIGHT_PIN) == LOW) {
+    FastLED.setBrightness(64); //For just testing on the bench
+  }
+  
+
 
   // Initialize reset button pin
 
@@ -335,16 +352,28 @@ void scoreboardLoop() {
 
 void handleButtonPress(int buttonIndex) {
   switch (buttonIndex) {
-    case 0:  // Left increment
+    case 0:  // Left increment - ADMIN
+      _scoreLeft = min(_scoreLeft + 1, 999);
+      saveScoresToEEPROM(); // Save updated score
+      displayScore_Left(_scoreLeft);
+      break;
+
     case 4:  // Left increment (alternate)
+    case 6:  // Left increment BIG
       _scoreLeft = min(_scoreLeft + 1, 999);
       saveScoresToEEPROM(); // Save updated score
       displayScore_Left(_scoreLeft);
       initiateSoundEffect();
       break;
 
-    case 2:  // Right increment
+    case 2:  // Right increment - ADMIN
+      _scoreRight = min(_scoreRight + 1, 999);
+      saveScoresToEEPROM(); // Save updated score
+      displayScore_Right(_scoreRight);
+      break;
+
     case 5:  // Right increment (alternate)
+    case 7:  // Right increment BIG
       _scoreRight = min(_scoreRight + 1, 999);
       saveScoresToEEPROM(); // Save updated score
       displayScore_Right(_scoreRight);
